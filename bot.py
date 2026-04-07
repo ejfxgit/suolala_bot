@@ -25,19 +25,11 @@ MAGICEDEN_LIST_URL = "https://api-mainnet.magiceden.dev/v2/collections/{}/listin
 # ===== BOT TOKEN =====
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ===== OPENROUTER (IMAGE GENERATION) =====
+# ===== IMAGE GENERATION (FAL.AI SDXL) =====
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+FAL_API_KEY = os.getenv("FAL_KEY") or os.getenv("FAL_API_KEY")
 GENERATE_COOLDOWNS = {}  # user_id -> last used timestamp
 GENERATE_COOLDOWN_SECONDS = 60  # 1 min cooldown per user
-
-# Fixed character prefix — always the meme girl
-MEME_GIRL_PREFIX = (
-    "chibi 3D anime girl, long straight dark blue-black hair, "
-    "purple to teal gradient zip-up hoodie with letter S on chest, "
-    "teal jogger pants, teal sneakers, brown eyes, cute chubby face, "
-    "3D render clay style, white background, "
-)
-
 
 # ===== TIMEZONE =====
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
@@ -570,13 +562,115 @@ async def start_buy_alert_monitor_safe(app):
         print("[BUY ALERT] No chat IDs found, monitor not started")
 
 
+
+def improve_prompt_and_caption(user_prompt: str):
+    """Improve user prompt and suggest a short caption."""
+    base_style = "viral meme, NFT collectible, cartoon style, ultra colorful, expressive, social-media trend"
+
+    if OPENROUTER_API_KEY:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://t.me/suolalabot",
+                    "X-Title": "Suolala Bot",
+                },
+                json={
+                    "model": "openai/gpt-4o-mini",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You transform prompts for text-to-image. Return strict JSON with keys "
+                                "improved_prompt and caption. Caption must be short and punchy."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": f"User prompt: {user_prompt}. Must include style: {base_style}",
+                        },
+                    ],
+                    "temperature": 0.7,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=30,
+            )
+            if response.ok:
+                content = response.json()["choices"][0]["message"]["content"]
+                parsed = response.json()
+                if isinstance(content, str):
+                    import json
+                    data = json.loads(content)
+                    improved = data.get("improved_prompt", "").strip()
+                    caption = data.get("caption", "").strip()
+                    if improved:
+                        return improved, caption or "🔥 Meme energy unlocked"
+                # fallback if API returns parsed object in some providers
+                msg = parsed.get("choices", [{}])[0].get("message", {})
+                if isinstance(msg.get("content"), dict):
+                    data = msg["content"]
+                    improved = str(data.get("improved_prompt", "")).strip()
+                    caption = str(data.get("caption", "")).strip()
+                    if improved:
+                        return improved, caption or "🔥 Meme energy unlocked"
+            else:
+                print(f"[PROMPT] OpenRouter improve failed: {response.status_code} {response.text[:500]}")
+        except Exception as e:
+            print(f"[PROMPT] OpenRouter improve error: {e}")
+
+    improved = f"{user_prompt}, {base_style}, high detail, studio lighting"
+    caption = "🔥 Viral meme drop"
+    return improved, caption
+
+
+def generate_image(prompt: str):
+    """Generate image with Fal.ai Fast SDXL and return image URL."""
+    if not FAL_API_KEY:
+        raise RuntimeError("Missing FAL_KEY or FAL_API_KEY")
+
+    payload = {
+        "prompt": prompt,
+        "image_size": "landscape_4_3",
+        "num_images": 1,
+        "enable_safety_checker": True,
+    }
+
+    response = requests.post(
+        "https://fal.run/fal-ai/fast-sdxl",
+        headers={
+            "Authorization": f"Key {FAL_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=90,
+    )
+
+    if not response.ok:
+        print(f"[FAL] Status: {response.status_code}")
+        print(f"[FAL] Response: {response.text[:1000]}")
+        return None
+
+    data = response.json()
+    images = data.get("images", [])
+    if images and isinstance(images[0], dict):
+        return images[0].get("url")
+
+    if "image" in data and isinstance(data["image"], dict):
+        return data["image"].get("url")
+
+    print(f"[FAL] Unexpected response: {data}")
+    return None
+
+
+
 # ===== /generate =====
 async def generate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remember_chat(update)
     user_id = update.effective_user.id
     now = datetime.utcnow().timestamp()
 
-    # Cooldown check
     last_used = GENERATE_COOLDOWNS.get(user_id, 0)
     if now - last_used < GENERATE_COOLDOWN_SECONDS:
         wait = int(GENERATE_COOLDOWN_SECONDS - (now - last_used))
@@ -587,78 +681,25 @@ async def generate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             "❗ Usage: /generate <your idea>\n"
-            "Example: /generate riding a bull 🐂"
+            "Example: /generate dragon trader in bull market"
         )
         return
 
-    user_prompt = " ".join(context.args)
-    full_prompt = MEME_GIRL_PREFIX + user_prompt
-
+    user_prompt = " ".join(context.args).strip()
     thinking_msg = await update.message.reply_text("🎨 Generating image...")
 
     try:
-        import re
-        print(f"[GENERATE] Prompt: {full_prompt[:80]}")
-        print(f"[GENERATE] API Key present: {bool(OPENROUTER_API_KEY)}")
-
-        # OpenRouter image gen via chat completions endpoint
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://t.me/suolalabot",
-                "X-Title": "Suolala Bot",
-            },
-            json={
-                "model": "black-forest-labs/flux-schnell",
-                "messages": [
-                    {"role": "user", "content": full_prompt}
-                ],
-            },
-            timeout=90
-        )
-
-        print(f"[GENERATE] Status: {response.status_code}")
-        print(f"[GENERATE] Response: {response.text[:500]}")
-
-        response.raise_for_status()
-        data = response.json()
-
-        # Extract image URL from response
-        image_url = None
-        choices = data.get("choices", [])
-        if choices:
-            content = choices[0].get("message", {}).get("content", "")
-            if isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "image_url":
-                        image_url = part.get("image_url", {}).get("url")
-                        break
-            elif content.startswith("http"):
-                image_url = content.strip()
-            elif "![" in content:
-                match = re.search(r"\((https?://[^\)]+)\)", content)
-                if match:
-                    image_url = match.group(1)
-
-        # Fallback: check data[0].url (OpenAI images format)
+        improved_prompt, caption = improve_prompt_and_caption(user_prompt)
+        image_url = generate_image(improved_prompt)
         if not image_url:
-            img_data = data.get("data", [])
-            if img_data:
-                image_url = img_data[0].get("url") or img_data[0].get("b64_json")
-
-        if not image_url:
-            print(f"[GENERATE] Cannot extract image. Full response: {data}")
-            raise ValueError("No image in response")
+            raise RuntimeError("No image URL returned by Fal.ai")
 
         GENERATE_COOLDOWNS[user_id] = now
         await thinking_msg.delete()
         await update.message.reply_photo(
             photo=image_url,
-            caption=f"🎨 {user_prompt}"
+            caption=caption,
         )
-
     except Exception as e:
         print(f"[GENERATE] Error: {e}")
         await thinking_msg.delete()
