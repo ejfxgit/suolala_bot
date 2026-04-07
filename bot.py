@@ -604,7 +604,7 @@ async def generate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "black-forest-labs/FLUX.1-schnell",
+                "model": "sourceful/riverflow-v2-fast-preview",
                 "messages": [
                     {
                         "role": "user",
