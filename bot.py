@@ -596,7 +596,7 @@ async def generate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     thinking_msg = await update.message.reply_text("🎨 Generating image...")
 
-    try:
+   try:
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -604,10 +604,14 @@ async def generate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Content-Type": "application/json",
             },
             json={
-                "model": "riverflow/v2-fast",
-                "modalities": ["image"],
+                "model": "black-forest-labs/FLUX.1-schnell",
                 "messages": [
-                    {"role": "user", "content": full_prompt}
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": full_prompt}
+                        ],
+                    }
                 ],
             },
             timeout=120,
