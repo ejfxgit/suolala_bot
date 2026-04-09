@@ -36,13 +36,18 @@ is_generating = False
 GENERATE_COOLDOWN_SECONDS = 600  # 10 minutes per user
 
 # Fixed character prefix — always the meme girl
-MEME_GIRL_PREFIX = (
-    "chibi 3D anime girl, long straight dark blue-black hair, "
-    "purple to teal gradient zip-up hoodie with letter S on chest, "
-    "teal jogger pants, teal sneakers, brown eyes, cute chubby face, "
-    "3D render clay style, white background, "
-)
 
+MEME_GIRL_PREFIX = (
+    "cute chibi 3D girl, pixar style, smooth plastic skin, glossy finish, "
+    "big round brown eyes, thick dark eyebrows, small rounded nose, soft confident smile, perfectly symmetrical face, "
+    "long straight black hair with blue shine, very smooth, center part, hair falling evenly on both sides, no stray hair, "
+    "slightly chubby cheeks, clean jawline, childlike proportions, "
+    "purple to teal gradient zip-up hoodie with a single white letter S on left chest, clean and centered, "
+    "teal jogger pants, teal sneakers, simple design, "
+    "big head small body proportions, short arms and legs, toy-like body, "
+    "standing straight, front view, perfectly centered, full body visible, "
+    "soft studio lighting, subtle reflections on skin, clean minimal background, high detail, 4k render"
+)
 
 # ===== TIMEZONE =====
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
